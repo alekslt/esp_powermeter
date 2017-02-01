@@ -54,7 +54,7 @@ const char* fingerprint = "DD:3E:52:82:D6:56:D3:F6:AD:93:81:B9:7D:D8:30:AF:A3:07
 #define REPORTING_LIVEPERIOD 5000
 #define REPORTING_MINUTEPERIOD 60000
 
-#define REPORTING_RAMP_ACTIVATION_SPAN_MS 10000
+#define REPORTING_RAMP_ACTIVATION_SPAN_MS 5000
 
 ////////////////////////////////
 // Just nerdy code stuff below /
@@ -78,6 +78,11 @@ void callback(char* topic, byte* payload, unsigned int length);
 char *f2s(double f, int p);
 
 ////////////////////////////////
+// Macros //////////////////////
+////////////////////////////////
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
+////////////////////////////////
 // Constants and Variables /////
 ////////////////////////////////
 #define POWER_MIN_LIMIT 0xFFFFFF
@@ -87,7 +92,7 @@ volatile unsigned long currentPulseTime = 0;
 volatile unsigned long prevTimePulse;
 volatile unsigned long impulsesTotal = 0; 
 volatile unsigned long loopCount = 0;
-volatile unsigned long prevDelta;
+volatile unsigned long prevDelta_uc;
 volatile double power = 0.0;
 volatile double power_min = 0.0;
 volatile double power_max = 0.0;
@@ -278,7 +283,7 @@ void loop() {
     double calcPbp = power_max;
     unsigned long timeSinceLastBlink = micros() - prevTimePulse;
     if ((timeSinceLastBlink/1000) > reportingLive.interval) {
-      if ( (timeSinceLastBlink/1000) > REPORTING_RAMP_ACTIVATION_SPAN_MS) {
+      if ( (timeSinceLastBlink/1000) > REPORTING_RAMP_ACTIVATION_SPAN_MS && timeSinceLastBlink > prevDelta_uc ){
         calcPbp = 3600000000.0 / (timeSinceLastBlink);
       } else {
         calcPbp = power;
@@ -317,13 +322,16 @@ void ICACHE_RAM_ATTR rising1()
 {
   flag_ldr_change = true;
   currentPulseTime = micros();
-  prevDelta = currentPulseTime - prevTimePulse;
-  if (prevDelta >  500000) {
+  prevDelta_uc = currentPulseTime - prevTimePulse;
+
+  // "Debounce" the readings
+  // TODO 20170201 ALT Verify that this time doesn't clip high usage times, e.g. above 10kW/h
+  if (prevDelta_uc >  500000) {
     impulsesTotal++;
     reportingLive.impulses++;
     reportingAvg60.impulses++;
 
-    power = 3600000000.0 / prevDelta;
+    power = 3600000000.0 / prevDelta_uc;
     if (power < power_min) {
       power_min = power;
     }
