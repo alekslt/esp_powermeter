@@ -281,15 +281,28 @@ void loop() {
 
   if ((unsigned long)(now - reportingLive.prevTimeReported) >= reportingLive.interval) {
     double calcPbp = power_max;
+    double calc_power_min = 0;
+    
+    // Check if we have reported and reset max/min
+    if (power_min == POWER_MIN_LIMIT) {
+      // Set to last known values
+      calcPbp = power;
+    } else {
+      // Set to current values
+      calc_power_min = power_min;
+    }
+    
+    bool ramp = false;
     unsigned long timeSinceLastBlink = micros() - prevTimePulse;
     if ((timeSinceLastBlink/1000) > reportingLive.interval) {
       if ( (timeSinceLastBlink/1000) > REPORTING_RAMP_ACTIVATION_SPAN_MS && timeSinceLastBlink > prevDelta_uc ){
         calcPbp = 3600000000.0 / (timeSinceLastBlink);
-      } else {
-        calcPbp = power;
+        ramp = true;
       }
     }
-    double calc_power_min = (power_min == POWER_MIN_LIMIT) ? 0.0 : power_min;
+
+    // sprintf(outMsg5, "tsb=%lu;timeSinceLastBlink=%lu;prevDelta_uc=%lu;ramp_on=%s;wsb=%lu;", (now / (unsigned long)1000), timeSinceLastBlink, prevDelta_uc, (ramp?"true":"false"), impulsesTotal);
+    // mqtt_client.publish(power_topic, outMsg5, true);
     
     sprintf(outMsg5, "tsb=%lu;imps@05=%d;pbp=%s;pbp_min=%s;pbp_max=%s;pbp_calc=%s;wsb=%lu;", (now / (unsigned long)1000), reportingLive.impulses, f2s(power,1), f2s(calc_power_min,1), f2s(power_max,1), f2s(calcPbp,1), impulsesTotal);
     resetPower();
@@ -322,11 +335,12 @@ void ICACHE_RAM_ATTR rising1()
 {
   flag_ldr_change = true;
   currentPulseTime = micros();
-  prevDelta_uc = currentPulseTime - prevTimePulse;
-
+  unsigned long current_delta = currentPulseTime - prevTimePulse;
+ 
   // "Debounce" the readings
   // TODO 20170201 ALT Verify that this time doesn't clip high usage times, e.g. above 10kW/h
-  if (prevDelta_uc >  500000) {
+  if (current_delta > 100000) {
+    prevDelta_uc = current_delta;
     impulsesTotal++;
     reportingLive.impulses++;
     reportingAvg60.impulses++;
